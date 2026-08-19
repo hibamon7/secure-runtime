@@ -14,7 +14,9 @@ router = APIRouter()
 @limiter.limit("10/minute")
 async def ask_endpoint(request: Request,payload: AskRequest, runtime: Runtime = Depends(get_runtime),current_user: TokenPayload = Depends(get_current_user)):
     try:
-        response = await runtime.ask(payload.prompt, user=current_user.sub)
+        response = await runtime.ask(payload.prompt, current_user=current_user)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except GuardrailViolation as e:
         raise HTTPException(status_code=400, detail=f"Requête bloquée: {e.reason}")
     return {"response": response}

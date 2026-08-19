@@ -1,53 +1,43 @@
 {
-  "version": "1.0.0",
+  "version": "1.2.0",
   "rules": [
     {
-      "id": "allow-read-user-uploads",
-      "resource": "file",
-      "action": "read",
-      "path_prefix": "/data/user_uploads/",
-      "effect": "allow",
-      "conditions": {"role": ["user", "admin"], "max_file_size_mb": 20}
+      "id": "allow-read-user-uploads", "resource": "file", "action": "read",
+      "path_prefix": "/data/user_uploads/", "effect": "allow",
+      "conditions": {"role": ["user", "admin"], "required_scopes": ["file:read"], "max_file_size_mb": 20}
     },
     {
-      "id": "deny-write-system-files",
-      "resource": "file",
-      "action": "write",
-      "path_prefix": "/etc/",
-      "effect": "deny",
-      "conditions": {}
+      "id": "allow-write-user-uploads", "resource": "file", "action": "write",
+      "path_prefix": "/data/user_uploads/", "effect": "allow",
+      "conditions": {"role": ["user", "admin"], "required_scopes": ["file:write"]}
     },
     {
-      "id": "allow-tool-calculator",
-      "resource": "tool",
-      "action": "execute",
-      "tool_name": "calculator",
-      "effect": "allow",
-      "conditions": {"role": ["user", "admin"]}
+      "id": "deny-write-system-files", "resource": "file", "action": "write",
+      "path_prefix": "/etc/", "effect": "deny", "conditions": {}
     },
     {
-      "id": "deny-tool-shell-exec",
-      "resource": "tool",
-      "action": "execute",
-      "tool_name": "shell_exec",
-      "effect": "deny",
-      "conditions": {}
+      "id": "allow-tool-calculator", "resource": "tool", "action": "execute",
+      "tool_name": "calculator", "effect": "allow", "conditions": {"role": ["user", "admin"]}
     },
     {
-      "id": "allow-api-weather",
-      "resource": "api",
-      "action": "call",
-      "domain": "api.open-meteo.com",
-      "effect": "allow",
-      "conditions": {"role": ["user", "admin"]}
+      "id": "deny-tool-shell-exec", "resource": "tool", "action": "execute",
+      "tool_name": "shell_exec", "effect": "deny", "conditions": {}
     },
     {
-      "id": "allow-network-llm-provider",
-      "resource": "network",
-      "action": "connect",
-      "domain": "api.anthropic.com",
-      "effect": "allow",
-      "conditions": {}
+      "id": "allow-api-weather", "resource": "api", "action": "call",
+      "effect": "allow", "conditions": {"role": ["user", "admin"], "required_scopes": ["api:call"]}
+    },
+    {
+      "id": "allow-network-weather-api", "resource": "network", "action": "connect",
+      "domain": "api.open-meteo.com", "effect": "allow", "conditions": {}
+    },
+    {
+      "id": "allow-network-llm-provider", "resource": "network", "action": "connect",
+      "domain": "api.anthropic.com", "effect": "allow", "conditions": {}
+    },
+    {
+      "id": "allow-llm-ask-authenticated", "resource": "llm", "action": "ask",
+      "effect": "allow", "conditions": {"role": ["user", "admin"]}
     }
   ]
 }

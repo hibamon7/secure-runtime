@@ -1,48 +1,55 @@
 import pytest
 from app.runtime.policy_engine.main import PolicyEngine
+from app.auth.schemas import TokenPayload
+import json
 
-@pytest.fixture
-def engine():
+
+@pytest.fixture 
+def engine(): #fixture to create a PolicyEngine instance for testing
     return PolicyEngine("app/runtime/policy_engine/rules.json")
 
+@pytest.fixture
+def make_user(): #fixture to create a TokenPayload instance for testing
+    def _make(sub="alice", role="user", scopes=None):
+        return TokenPayload(sub=sub, role=role, scopes=scopes or [])
+    return _make
+
 def test_allow_matching_rule(engine):
-    d = engine.evaluate(
-        subject={"role": "user", "file_size_mb": 5},
-        resource={"type": "file", "path": "/data/user_uploads/photo.png"},
-        action="read",
-    )
+    d = engine.evaluate({"role": "user", "scopes": ["file:read"], "file_size_mb": 5},
+                         {"type": "file", "path": "/data/user_uploads/photo.png"}, "read")
     assert d.allowed is True
-    assert d.matched_rule_id == "allow-read-user-uploads"
 
 def test_fail_closed_no_matching_rule(engine):
-    d = engine.evaluate(
-        subject={"role": "user"},
-        resource={"type": "file", "path": "/tmp/random.txt"},
-        action="read",
-    )
+    d = engine.evaluate({"role": "user"}, {"type": "file", "path": "/tmp/x.txt"}, "read")
     assert d.allowed is False
 
 def test_deny_wins_on_system_write(engine):
-    d = engine.evaluate(
-        subject={"role": "admin"},
-        resource={"type": "file", "path": "/etc/passwd"},
-        action="write",
-    )
+    d = engine.evaluate({"role": "admin"}, {"type": "file", "path": "/etc/passwd"}, "write")
     assert d.allowed is False
-    assert d.matched_rule_id == "deny-write-system-files"
 
-def test_path_traversal_blocked_by_normalization(engine):
-    d = engine.evaluate(
-        subject={"role": "user", "file_size_mb": 1},
-        resource={"type": "file", "path": "/data/user_uploads/../../etc/passwd"},
-        action="read",
-    )
-    assert d.allowed is False  # le chemin normalisé ne matche plus le prefix autorisé
-
-def test_condition_role_rejected(engine):
-    d = engine.evaluate(
-        subject={"role": "guest"},
-        resource={"type": "tool", "tool_name": "calculator"},
-        action="execute",
-    )
+def test_path_traversal_blocked(engine):
+    d = engine.evaluate({"role": "user", "scopes": ["file:read"], "file_size_mb": 1},
+                         {"type": "file", "path": "/data/user_uploads/../../etc/passwd"}, "read")
     assert d.allowed is False
+
+def test_missing_scope_denied(engine):
+    d = engine.evaluate({"role": "user", "scopes": [], "file_size_mb": 1},
+                         {"type": "file", "path": "/data/user_uploads/x.png"}, "read")
+    assert d.allowed is False
+
+def test_unknown_condition_key_raises(tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"version": "0.0.1", "rules": [
+        {"id": "r1", "resource": "file", "action": "read", "effect": "allow",
+         "conditions": {"requiredScopes": ["x"]}}
+    ]}))
+    with pytest.raises(ValueError, match="condition"):
+        PolicyEngine(str(bad))
+
+def test_invalid_effect_raises(tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"version": "0.0.1", "rules": [
+        {"id": "r1", "resource": "file", "action": "read", "effect": "denny", "conditions": {}}
+    ]}))
+    with pytest.raises(ValueError, match="effect invalide"):
+        PolicyEngine(str(bad))

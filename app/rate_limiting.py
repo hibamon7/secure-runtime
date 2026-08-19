@@ -3,7 +3,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address #remote_address est une fonction utilitaire fournie par la bibliothèque slowapi. Elle est utilisée pour obtenir l'adresse IP du client à partir de la requête HTTP entrante. Cette adresse IP est ensuite utilisée comme clé pour appliquer les limites de débit (rate limiting) sur les requêtes provenant de ce client spécifique.
 from app.auth.security import decode_token
 
-def key_func(request: Request) -> str:
+def key_func(request: Request) -> str: 
     """Identifie par sub du JWT si présent, sinon fallback IP."""
     auth_header = request.headers.get("Authorization", "") 
     if auth_header.startswith("Bearer "):

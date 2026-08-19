@@ -18,3 +18,4 @@ typing_extensions==4.16.0
 uvicorn==0.52.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.3.0
+pyseccomp==0.1.2
