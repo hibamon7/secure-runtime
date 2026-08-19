@@ -38,7 +38,21 @@ async def _run_sandboxed(receipt: AuthorizationReceipt, operation: str, identifi
         #create_subprocess_exec() lance le worker Landlock, et communicate() attend sa fin pour récupérer son résultat et ses erreurs.
 
     if proc.returncode != 0:
-        # distinct du log de refus Policy Engine — celui-ci indique un refus au niveau noyau
-        logger.warning("sandbox_denied: operation=%s stderr=%s", operation, stderr.decode().strip())
-        raise PermissionError(f"Accès refusé par le sandbox: {operation}")
+        logger.warning(
+            "sandbox_failed: operation=%s returncode=%s stderr=%r",
+            operation,
+            proc.returncode,
+            stderr,
+        )
+        raise PermissionError(
+            f"Sandbox failed: operation={operation}, "
+            f"returncode={proc.returncode}, "
+            f"stderr={stderr.decode(errors='replace')}"
+        )
+
+    if not stdout:
+        raise RuntimeError(
+            f"Sandbox worker returned no output. stderr={stderr.decode(errors='replace')!r}"
+        )
+
     return stdout.decode()

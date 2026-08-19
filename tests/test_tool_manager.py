@@ -36,10 +36,20 @@ async def test_execute_tool_shell_exec_denied_no_rule(runtime, make_user):
 
 @pytest.mark.asyncio
 async def test_call_api_allowed_domain(runtime, make_user, monkeypatch):
-    async def fake_request(method, url, **kwargs):
-        return {"temperature": 21}
-    monkeypatch.setattr(runtime, "_http_request", fake_request)
-    result = await runtime.call_api("https://api.open-meteo.com/v1/forecast", current_user=make_user())
+    async def fake_run_sandboxed(*args, **kwargs):
+        import json
+        return json.dumps({"temperature": 21})
+
+    monkeypatch.setattr(
+        "app.runtime.main._run_sandboxed",
+        fake_run_sandboxed
+    )
+
+    result = await runtime.call_api(
+        "https://api.open-meteo.com/v1/forecast",
+        current_user=make_user()
+    )
+
     assert result == {"temperature": 21}
 
 
@@ -68,3 +78,15 @@ async def test_receipt_identifier_mismatch_for_wrong_tool(runtime, make_user):
 async def test_call_api_network_denied_wrong_port(runtime, make_user, monkeypatch):
     with pytest.raises(PermissionError):
         await runtime.call_api("https://api.open-meteo.com:9999/v1/forecast", current_user=make_user())
+
+
+@pytest.mark.asyncio
+async def test_call_api_real_sandbox(runtime, make_user):
+    user = make_user()
+
+    result = await runtime.call_api(
+        "https://api.open-meteo.com/v1/forecast?latitude=33.59&longitude=-7.62&current=temperature_2m",
+        current_user=user,
+    )
+
+    assert isinstance(result, dict)
