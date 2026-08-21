@@ -36,7 +36,7 @@ DANGEROUS_SYSCALLS = [
 ]
 
 def _apply_seccomp() -> None:
-    f = seccomp.SyscallFilter(defaction=seccomp.KILL)
+    f = seccomp.SyscallFilter(defaction=seccomp.ALLOW)
     try:
         for name in DANGEROUS_SYSCALLS:
             f.add_rule(seccomp.KILL, name)
@@ -64,10 +64,10 @@ def _handle_tool_exec(script_path: str, kwargs: dict) -> str:
     resolved_script = str(Path(script_path).resolve())
     _apply_seccomp()
     Landlock().add_path_rule(resolved_script, access=AccessFs.READ_FILE).apply()
-    spec = importlib.util.spec_from_file_location("tool_module", resolved_script)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return json.dumps(module.run(**kwargs))
+    spec = importlib.util.spec_from_file_location("tool_module", resolved_script) #this is to load the code of the tool
+    module = importlib.util.module_from_spec(spec) #the module is a representation of the code in memory, it is not executed yet
+    spec.loader.exec_module(module) #this line executes the code of the tool
+    return json.dumps(module.run(**kwargs)) #this line returns the result of the run as a json object
 
 def _handle_network_call(method: str, url: str, port: int, body: dict | None) -> str:
     _apply_seccomp()
@@ -77,10 +77,9 @@ def _handle_network_call(method: str, url: str, port: int, body: dict | None) ->
         .add_path_rule("/etc/resolv.conf", access=AccessFs.READ_FILE)
         .add_path_rule("/etc/hosts", access=AccessFs.READ_FILE)
         .add_path_rule("/etc/nsswitch.conf", access=AccessFs.READ_FILE)
-        .allow_network(port, bind=False, connect=True)
+        .allow_network(port, bind=False, connect=True) #bind means the process only listens to the port
         .apply()
     )
-    resp = httpx.request(method, url, json=body, timeout=5.0)
     resp = httpx.request(method, url, json=body, timeout=5.0)
 
     print(

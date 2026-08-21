@@ -10,6 +10,7 @@ from app.runtime.tool_manager.main import get_tool_script
 from app.runtime.sandbox_manager.wiring import _run_sandboxed
 from app.runtime.sandbox_manager.authorization_receipt import AuthorizationReceipt
 import json
+from app.runtime.tool_manager.identity_manager import verify_tool_identity
 
 logger = logging.getLogger("policy_engine") #sert à créer un objet logger pour enregistrer les événements liés au moteur de politique. Cela permet de suivre les décisions de politique, les erreurs et d'autres informations pertinentes pour le débogage et l'audit.
 
@@ -102,6 +103,7 @@ class Runtime:
         script_path = get_tool_script(name)
         if script_path is None:
             raise ValueError(f"Outil '{name}' non implémenté")
+        verify_tool_identity(script_path) #avant l'appel du sandbox pour reduction du cout de fork/exec et assurance de la securite du tool
         result = await _run_sandboxed(
             receipt, "tool_exec", identifier=name,
             worker_kwargs={"script_path": script_path, "kwargs": kwargs},
