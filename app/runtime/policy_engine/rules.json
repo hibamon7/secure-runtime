@@ -38,6 +38,10 @@
     {
       "id": "allow-llm-ask-authenticated", "resource": "llm", "action": "ask",
       "effect": "allow", "conditions": {"role": ["user", "admin"]}
+    },
+    {
+      "id": "allow-rag-query-authenticated", "resource": "rag", "action": "query",
+      "effect": "allow", "conditions": {"role": ["user", "admin"]}
     }
   ]
 }

@@ -18,7 +18,9 @@ def test_rules_file(tmp_path):
              "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-api", "resource": "api", "action": "call", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-net", "resource": "network", "action": "connect", "domain": "api.open-meteo.com",
-             "effect": "allow", "conditions": {}},
+             "effect": "allow", "conditions": {}},{"id": "r-rag", "resource": "rag", "action": "query", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
+            {"id": "r-llm", "resource": "llm", "action": "ask", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
+            {"id": "r-rag", "resource": "rag", "action": "query", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
         ],
     }
     f = tmp_path / "rules.json"
