@@ -2,20 +2,12 @@ import re #regex module is imported to use regular expressions for pattern match
 from transformers import pipeline #charger et utliser le prompt guard 
 import torch #les tenseurs représentent des tableaux multidimensionnels et sont utilisés pour stocker les entrées, les poids du modèle et les sorties. PyTorch fournit des opérations optimisées sur ces tenseurs, ce qui est crucial pour l'entraînement et l'inférence des modèles de deep learning.
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from app.runtime.input_guardrails.config import load_guardrails_config
 
-
-JAILBREAK_PATTERNS = [
-    r"ignore (all )?(previous|prior|above) instructions",
-    r"disregard (all )?(previous|prior|above) (instructions|rules)",
-    r"you are now (in )?(dan|jailbreak|developer) mode",
-    r"reveal (your |the )?(system prompt|instructions)",
-    r"pretend (you have no|to have no) (restrictions|rules|filters)",
-    r"act as if you (have no|had no) (guidelines|restrictions)",
-    r"forget (everything|all) (you('ve| have) been told|above)",
-    r"\bDAN\b",
-]
-
-MAX_PROMPT_LENGTH = 4000  # caractères — seuil "longueur anormale", à ajuster après tests
+_config = load_guardrails_config()
+MAX_PROMPT_LENGTH = _config["max_prompt_length"]
+MODEL_THRESHOLD = _config["model_threshold"]
+JAILBREAK_PATTERNS = _config["jailbreak_patterns"]
 
 class GuardrailViolation(Exception):
     def __init__(self, reason: str):
@@ -23,7 +15,6 @@ class GuardrailViolation(Exception):
         super().__init__(reason) #this line calls the constructor of the base Exception class with the reason for the violation, allowing the exception to carry a message that can be used for logging or user feedback.   
 
 
-MODEL_THRESHOLD = 0.5  # point de départ — à ajuster après le benchmark ci-dessous
 
 MODEL_ID = "meta-llama/Llama-Prompt-Guard-2-86M" 
 # Mapping label brut -> sens, PAR modèle — le nombre de classes et leur ordre

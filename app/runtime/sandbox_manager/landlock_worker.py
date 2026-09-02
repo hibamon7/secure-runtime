@@ -23,19 +23,9 @@ _ = httpx.Client()
 
 STDLIB_DIR = sysconfig.get_path("stdlib") #demande à l'installation Python actuelle où se trouve sa standard library sur le disque. 
 
-# Syscalls nécessaires au fonctionnement de base de CPython + I/O simple.
-# Obtenu par observation empirique (mode LOG) — à revalider si ça casse.
-DANGEROUS_SYSCALLS = [
-    "execve", "execveat",              # empêche de lancer un autre programme
-    "fork", "vfork", "clone", "clone3", # empêche de créer d'autres processus
-    "ptrace",                           # empêche d'espionner/manipuler un autre process
-    "mount", "umount2",                 # empêche de modifier le système de fichiers monté
-    "reboot", "kexec_load",             # empêche d'agir sur la machine elle-même
-    "init_module", "delete_module",     # empêche de charger du code dans le noyau
-    "setuid", "setgid", "setreuid", "setregid",  # empêche de changer d'identité
-]
 
-def _apply_seccomp() -> None:
+
+def _apply_seccomp(dangerous_syscalls: list[str]) -> None:
     f = seccomp.SyscallFilter(defaction=seccomp.ALLOW)
     try:
         for name in DANGEROUS_SYSCALLS:
@@ -49,30 +39,29 @@ def _apply_seccomp() -> None:
         print(f"seccomp indisponible ({e}) — Landlock reste actif.", file=sys.stderr)
 
 
-def _handle_file_read(path: str) -> str:
-    _apply_seccomp()
+def _handle_file_read(path: str,dangerous_syscalls: list[str]) -> str:
+    _apply_seccomp(dangerous_syscalls)
     Landlock().allow_read(str(Path(path).parent)).apply()
     return Path(path).read_text()
 
-def _handle_file_write(path: str, content: str) -> str:
-    _apply_seccomp()
+def _handle_file_write(path: str, content: str,dangerous_syscalls: list[str]) -> str:
+    _apply_seccomp(dangerous_syscalls)
     Landlock().allow_read_write(str(Path(path).parent)).apply()
     Path(path).write_text(content)
     return ""
 
-def _handle_tool_exec(script_path: str, kwargs: dict) -> str:
+def _handle_tool_exec(script_path: str, kwargs: dict,dangerous_syscalls: list[str]) -> str:
     resolved_script = str(Path(script_path).resolve())
-    _apply_seccomp()
+    _apply_seccomp(dangerous_syscalls)
     Landlock().add_path_rule(resolved_script, access=AccessFs.READ_FILE).apply()
     spec = importlib.util.spec_from_file_location("tool_module", resolved_script) #this is to load the code of the tool
     module = importlib.util.module_from_spec(spec) #the module is a representation of the code in memory, it is not executed yet
     spec.loader.exec_module(module) #this line executes the code of the tool
     return json.dumps(module.run(**kwargs)) #this line returns the result of the run as a json object
 
-def _handle_network_call(method: str, url: str, port: int, body: dict | None) -> str:
-    _apply_seccomp()
-    (
-        Landlock()
+def _handle_network_call(method: str, url: str, port: int, dangerous_syscalls: list[str], body: dict | None) -> str:
+    _apply_seccomp(dangerous_syscalls)
+    (Landlock()
         .add_path_rule(certifi.where(), access=AccessFs.READ_FILE)
         .add_path_rule("/etc/resolv.conf", access=AccessFs.READ_FILE)
         .add_path_rule("/etc/hosts", access=AccessFs.READ_FILE)
@@ -96,6 +85,7 @@ def _handle_network_call(method: str, url: str, port: int, body: dict | None) ->
 
 def main() -> None:
     request = json.loads(sys.argv[1])
+    dangerous_syscalls = request["dangerous_syscalls"]
     op = request["operation"]
     if op == "file_read":
         result = _handle_file_read(request["path"])

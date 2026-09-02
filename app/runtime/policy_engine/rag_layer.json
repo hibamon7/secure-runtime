@@ -1,0 +1,6 @@
+{
+  "version": "1.0.0",
+  "trusted_sources": {
+    "internal_docs": "<clé publique base64>"
+  }
+}

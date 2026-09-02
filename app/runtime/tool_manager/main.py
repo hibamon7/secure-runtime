@@ -1,10 +1,9 @@
 import ast
 import operator
+from app.runtime.tool_manager.config import load_tools_config
 
-# Registre des outils réellement implémentés — "shell_exec" n'y figure pas volontairement.
-TOOL_SCRIPTS = {
-    "calculator": "app/runtime/tool_manager/tools/calculator.py",
-}
+TOOLS_CONFIG = load_tools_config()
 
 def get_tool_script(name: str) -> str | None:
-    return TOOL_SCRIPTS.get(name)
+    entry = TOOLS_CONFIG.get(name)
+    return entry["script_path"] if entry else None

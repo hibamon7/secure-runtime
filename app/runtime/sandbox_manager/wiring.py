@@ -5,6 +5,9 @@ import sys
 import os
 from pathlib import Path
 import importlib.util
+from app.runtime.sandbox_manager.config import load_sandbox_config
+
+_SANDBOX_CONFIG = load_sandbox_config()
 
 CGROUP_BASE = Path(f"/sys/fs/cgroup/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service")
 #for me for ex: /sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/ , this is the path to the cgroup of the current user, where we can find the cgroup of the current process and its children
@@ -47,10 +50,12 @@ async def _run_sandboxed(receipt: AuthorizationReceipt,operation: str,identifier
 
     # Crée un cgroup dédié à cette opération.
     # Les limites mémoire, CPU et nombre de processus sont configurées ici.
-    cg_path = _setup_cgroup(operation)
-
-    request = {"operation": operation, **worker_kwargs}
-
+    cg_path = _setup_cgroup(operation, **_SANDBOX_CONFIG["cgroup_defaults"])
+    request = {
+        "operation": operation,
+        "dangerous_syscalls": _SANDBOX_CONFIG["dangerous_syscalls"],
+        **worker_kwargs,
+    }
     proc = await asyncio.create_subprocess_exec(
         sys.executable, #lance dasn l interpreteur python actuel
         SANDBOX_WORKER,
@@ -80,12 +85,12 @@ async def _run_sandboxed(receipt: AuthorizationReceipt,operation: str,identifier
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
-
+            _cleanup_cgroup(cg_path)
             raise PermissionError(
                 f"Opération {operation} annulée : "
                 f"délai de {timeout}s dépassé"
             )
-
+        _cleanup_cgroup(cg_path)
     finally:
         # Supprime le cgroup après la fin du worker afin de nettoyer
         # les ressources et le répertoire associé à cette opération.

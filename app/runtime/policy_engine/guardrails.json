@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "max_prompt_length": 4000,
+  "model_threshold": 0.5,
+  "jailbreak_patterns": [
+    "ignore (all )?(previous|prior|above) instructions",
+    "disregard (all )?(previous|prior|above) (instructions|rules)",
+    "you are now (in )?(dan|jailbreak|developer) mode",
+    "reveal (your |the )?(system prompt|instructions)",
+    "pretend (you have no|to have no) (restrictions|rules|filters)",
+    "act as if you (have no|had no) (guidelines|restrictions)",
+    "forget (everything|all) (you('| a)ve been told|above)",
+    "\\bDAN\\b"
+  ]
+}
