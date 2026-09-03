@@ -8,5 +8,5 @@ public_key = private_key.public_key()
 priv_b64 = base64.b64encode(private_key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())).decode()
 pub_b64 = base64.b64encode(public_key.public_bytes(Encoding.Raw, PublicFormat.Raw)).decode()
 
-print("Clé PRIVÉE (garde-la hors du repo, jamais commit) :", priv_b64)
-print("Clé PUBLIQUE (colle-la dans policies/rag_sources.json) :", pub_b64)
+print("Clé PRIVÉE ( hors du repo) :", priv_b64)
+print("Clé PUBLIQUE (crag_layer.json) :", pub_b64)

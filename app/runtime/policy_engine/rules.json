@@ -42,6 +42,10 @@
     {
       "id": "allow-rag-query-authenticated", "resource": "rag", "action": "query",
       "effect": "allow", "conditions": {"role": ["user", "admin"]}
-    }
+    },
+    {
+      "id": "r-rag-confidential", "resource": "rag_document", "action": "use",
+      "effect": "allow", "conditions": {"role": ["admin"]}, "classification": "confidential"
+    },
   ]
 }

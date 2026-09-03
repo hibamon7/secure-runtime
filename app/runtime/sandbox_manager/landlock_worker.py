@@ -88,13 +88,13 @@ def main() -> None:
     dangerous_syscalls = request["dangerous_syscalls"]
     op = request["operation"]
     if op == "file_read":
-        result = _handle_file_read(request["path"])
+        result = _handle_file_read(request["path"], dangerous_syscalls)
     elif op == "file_write":
-        result = _handle_file_write(request["path"], request["content"])
+        result = _handle_file_write(request["path"], request["content"], dangerous_syscalls)
     elif op == "tool_exec":
-        result = _handle_tool_exec(request["script_path"], request.get("kwargs", {}))
+        result = _handle_tool_exec(request["script_path"], request.get("kwargs", {}), dangerous_syscalls)
     elif op == "network_call":
-        result = _handle_network_call(request["method"], request["url"], request["port"], request.get("body"))
+        result = _handle_network_call(request["method"], request["url"], request["port"], dangerous_syscalls, request.get("body"))
     else:
         raise ValueError(f"Opération inconnue: {op}")
     sys.stdout.write(result)

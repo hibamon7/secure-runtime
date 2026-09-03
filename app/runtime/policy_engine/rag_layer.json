@@ -1,6 +1,4 @@
 {
   "version": "1.0.0",
-  "trusted_sources": {
-    "internal_docs": "<clé publique base64>"
-  }
+  "indexation_public_key": "/zIdBJVNzTAa62AMAfBCEqoVdzQSM7/HI/dj7aVKsPg="
 }

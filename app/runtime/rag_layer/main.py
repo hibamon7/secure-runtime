@@ -21,10 +21,11 @@ def index_documents(documents: list[str], ids: list[str], sources: list[str], si
     _get_collection().add(documents=documents, ids=ids, metadatas=metadatas)
 
 
-def search(query: str, n_results: int = 3) -> list[dict]: #returns the 3 documents of chroma the nearerst to the sense of the question asked
+def search(query: str, n_results: int = 3) -> list[dict]: #returns the 3 documents of chroma the nearerst to the sense of the question asked (kNN search)
     results = _get_collection().query(query_texts=[query], n_results=n_results)
     docs = results["documents"][0] if results["documents"] else []
     metas = results["metadatas"][0] if results["metadatas"] else [{}] * len(docs)
+    metas = [m if isinstance(m, dict) else {} for m in metas]
     ids = results["ids"][0] if results["ids"] else [""] * len(docs)
     return [
         {"text": d, "source": m.get("source", "inconnu"), "signature": m.get("signature", ""), "document_id": i}

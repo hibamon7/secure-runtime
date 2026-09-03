@@ -10,7 +10,7 @@ class Decision:
 
 '''this can be modified to add more features like logging, caching, etc. but for now it is a simple implementation of a policy engine that evaluates rules based on subject, resource and action. The rules are loaded from a JSON file and the evaluate method returns a Decision object indicating whether the action is allowed or denied based on the rules.'''
 RESERVED_KEYS = {"id", "resource", "action", "effect", "conditions"}
-KNOWN_MATCH_KEYS = {"path_prefix", "tool_name", "domain", "port"}
+KNOWN_MATCH_KEYS = {"path_prefix", "tool_name", "domain", "port", "classification"}
 KNOWN_CONDITION_KEYS = {"role", "required_scopes", "max_file_size_mb"}
 
 

@@ -21,6 +21,8 @@ def test_rules_file(tmp_path):
              "effect": "allow", "conditions": {}},{"id": "r-rag", "resource": "rag", "action": "query", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-llm", "resource": "llm", "action": "ask", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-rag", "resource": "rag", "action": "query", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
+            {"id": "r-rag-confidential", "resource": "rag_document", "action": "use",
+            "effect": "allow", "conditions": {"role": ["admin"]}, "classification": "confidential"},        
         ],
     }
     f = tmp_path / "rules.json"

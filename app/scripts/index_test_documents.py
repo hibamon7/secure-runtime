@@ -1,28 +1,33 @@
-import base64
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+import json
+from pathlib import Path
 from app.runtime.rag_layer.main import index_documents, chunk_text
-from app.runtime.rag_layer.provenance import canonical_payload
+from app.runtime.rag_layer.provenance import IndexationSigner
 
-PRIVATE_KEY_B64 = "<colle ici la clé privée générée>"
-private_key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(PRIVATE_KEY_B64))
+PRIVATE_KEY_B64 = "upfBEgrnc+4nKWk40nKb7RDxa4Do1Og3Zdm/qpuAA44="
+signer = IndexationSigner(PRIVATE_KEY_B64)
 
 docs = [
-    "Le Policy Engine applique fail-closed : toute action sans règle explicite est refusée.",
-    "Landlock restreint l'accès filesystem au niveau noyau, via un sous-processus jetable.",
-    "Le Sandbox Manager unifie Landlock, seccomp et cgroups pour fichiers, outils et réseau.",
+    {"text": "Le Policy Engine applique fail-closed : toute action sans règle explicite est refusée.", "classification": None},
+    {"text": "Landlock restreint l'accès filesystem au niveau noyau, via un sous-processus jetable.", "classification": None},
+    {"text": "Budget interne confidentiel : détail des coûts d'infrastructure du projet.", "classification": "confidential"},
 ]
 
 all_chunks, all_ids, all_sources, all_signatures = [], [], [], []
+classification_registry = {}
+
 for i, doc in enumerate(docs):
-    for j, chunk in enumerate(chunk_text(doc)):
+    for j, chunk in enumerate(chunk_text(doc["text"])):
         doc_id = f"doc{i}_chunk{j}"
-        source = "internal_docs"
-        payload = canonical_payload(source, doc_id, chunk)
-        signature = base64.b64encode(private_key.sign(payload)).decode()
         all_chunks.append(chunk)
         all_ids.append(doc_id)
-        all_sources.append(source)
-        all_signatures.append(signature)
+        all_sources.append("internal_docs")
+        all_signatures.append(signer.sign(doc_id, chunk))
+        if doc["classification"] is not None:
+            classification_registry[doc_id] = doc["classification"]  # chaque chunk hérite du document
 
 index_documents(all_chunks, ids=all_ids, sources=all_sources, signatures=all_signatures)
-print(f"{len(all_chunks)} chunks signés (source+id+texte) et indexés depuis {len(docs)} documents.")
+
+registry_path = Path("policies/rag_classification.json")
+registry_path.write_text(json.dumps({"version": "1.0.0", "classified_documents": classification_registry}, indent=2))
+
+print(f"{len(all_chunks)} chunks indexés, {len(classification_registry)} classifiés confidentiels.")
