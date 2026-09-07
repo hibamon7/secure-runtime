@@ -1,11 +1,15 @@
 import asyncio
 import json
-import logging
 import sys
 import os
 from pathlib import Path
 import importlib.util
 from app.runtime.sandbox_manager.config import load_sandbox_config
+import signal as signal_module
+from app.runtime.audit_manager.main import get_audit_logger
+
+audit = get_audit_logger("sandbox_manager")
+
 
 _SANDBOX_CONFIG = load_sandbox_config()
 
@@ -15,7 +19,6 @@ CGROUP_BASE = Path(f"/sys/fs/cgroup/user.slice/user-{os.getuid()}.slice/user@{os
 
 from app.runtime.sandbox_manager.authorization_receipt import AuthorizationReceipt
 
-logger = logging.getLogger("sandbox_manager")  # nom distinct de "policy_engine" — utile pour filtrer les logs
 
 SANDBOX_WORKER = "app/runtime/sandbox_manager/landlock_worker.py"
 
@@ -28,51 +31,68 @@ _OPERATION_TO_RECEIPT = {
 }#able de correspondance entre deux vocabulaires: du policu engine et du landlock worker
 
 
-async def _run_sandboxed(receipt: AuthorizationReceipt,operation: str,identifier: str,worker_kwargs: dict,timeout=10.0) -> str:
+async def _run_sandboxed(receipt: AuthorizationReceipt,operation: str,identifier: str,worker_kwargs: dict, timeout: float = 10.0) -> str:
     expected_type, expected_action = _OPERATION_TO_RECEIPT.get(operation, (None, None))
 
-    if receipt.resource_type != expected_type or receipt.action != expected_action:
-        logger.error(
-            "sandbox_receipt_mismatch: operation=%s receipt_type=%s receipt_action=%s",
-            operation,
-            receipt.resource_type,
-            receipt.action,
+    # Vérifie que le reçu correspond à l'opération demandée.
+    if (
+        receipt.resource_type != expected_type
+        or receipt.action != expected_action
+    ):
+        audit.warning(
+            "policy_denial",
+            operation=operation,
+            reason="invalid_receipt",
         )
-        raise PermissionError("Reçu d'autorisation invalide pour cette opération")
+        raise PermissionError(
+            "Reçu d'autorisation invalide pour cette opération"
 
-    if receipt.identifier != identifier:
-        logger.error(
-            "sandbox_receipt_mismatch: attendu=%s reçu=%s",
-            identifier,
-            receipt.identifier,
         )
-        raise PermissionError("Reçu d'autorisation invalide : cible différente de celle autorisée")
+
+    # Vérifie que la cible correspond à celle autorisée.
+    if receipt.identifier != identifier:
+        audit.warning(
+            "policy_denial",
+            operation=operation,
+            reason="unauthorized_target",
+        )
+        raise PermissionError(
+            "Reçu d'autorisation invalide : "
+            "cible différente de celle autorisée"
+        )
 
     # Crée un cgroup dédié à cette opération.
-    # Les limites mémoire, CPU et nombre de processus sont configurées ici.
-    cg_path = _setup_cgroup(operation, **_SANDBOX_CONFIG["cgroup_defaults"])
+    cg_path = _setup_cgroup(
+        operation,
+        **_SANDBOX_CONFIG["cgroup_defaults"],
+    )
+
     request = {
         "operation": operation,
         "dangerous_syscalls": _SANDBOX_CONFIG["dangerous_syscalls"],
         **worker_kwargs,
     }
+
     proc = await asyncio.create_subprocess_exec(
-        sys.executable, #lance dasn l interpreteur python actuel
+        sys.executable,
         SANDBOX_WORKER,
         json.dumps(request),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        close_fds=True #ensures that stdout and stderr are closed in the child process, preventing file descriptor leaks and ensuring that the child process does not inherit unnecessary file descriptors
+        close_fds=True,
     )
 
-    # Ajoute le worker au cgroup après sa création.
-    # create_subprocess_exec() nous donne son PID, que nous écrivons
-    # dans cgroup.procs afin que le worker soit soumis aux limites du cgroup.
+    # Ajoute le worker au cgroup.
     if cg_path is not None:
         try:
             (cg_path / "cgroup.procs").write_text(str(proc.pid))
         except OSError as e:
-            logger.warning("échec d'ajout au cgroup: %s", e)
+            audit.warning(
+                "infra_failure",
+                operation=operation,
+                component="cgroup",
+                detail=f"attach_failed: {e}",
+            )
 
     try:
         try:
@@ -80,71 +100,182 @@ async def _run_sandboxed(receipt: AuthorizationReceipt,operation: str,identifier
                 proc.communicate(),
                 timeout=timeout,
             )
-    # create_subprocess_exec() lance le worker Landlock,
-    # et communicate() attend sa fin pour récupérer son résultat et ses erreurs.
+
         except asyncio.TimeoutError:
             proc.kill()
             await proc.communicate()
-            _cleanup_cgroup(cg_path)
+
+            audit.warning(
+                "cgroup_exceeded",
+                operation=operation,
+                limit_type="timeout",
+                limit_s=timeout,
+            )
+
             raise PermissionError(
                 f"Opération {operation} annulée : "
                 f"délai de {timeout}s dépassé"
             )
-        _cleanup_cgroup(cg_path)
+
     finally:
-        # Supprime le cgroup après la fin du worker afin de nettoyer
-        # les ressources et le répertoire associé à cette opération.
+        # Nettoyage unique du cgroup.
         _cleanup_cgroup(cg_path)
+
     stderr_text = stderr.decode(errors="replace").strip()
 
+    # stderr est conservé comme information de diagnostic.
     if stderr_text:
-        level = (logging.WARNING if proc.returncode != 0 else logging.INFO)
+        if proc.returncode == 0:
+            audit.info(
+                "sandbox_stderr",
+                operation=operation,
+                returncode=proc.returncode,
+                stderr=stderr_text,
+            )
+        else:
+            audit.warning(
+                "sandbox_stderr",
+                operation=operation,
+                returncode=proc.returncode,
+                stderr=stderr_text,
+            )
 
-        logger.log(
-            level,
-            "sandbox_stderr: operation=%s returncode=%s stderr=%s",
-            operation,
-            proc.returncode,
-            stderr_text,
+    # Worker terminé correctement.
+    if proc.returncode == 0:
+        return stdout.decode()
+
+    # Worker terminé par un signal.
+    if proc.returncode < 0:
+        sig = -proc.returncode
+
+        if sig == getattr(signal_module, "SIGSYS", 31):
+            audit.warning(
+                "seccomp_violation",
+                operation=operation,
+                signal=sig,
+            )
+            raise PermissionError(
+                f"Appel système bloqué: {operation}"
+            )
+
+        if sig == getattr(signal_module, "SIGKILL", 9):
+            audit.warning(
+                "cgroup_exceeded",
+                operation=operation,
+                signal=sig,
+                detail="probable OOM kill",
+            )
+            raise PermissionError(
+                f"Limite de ressources dépassée: {operation}"
+            )
+
+        audit.warning(
+            "infra_failure",
+            operation=operation,
+            signal=sig,
+        )
+        raise RuntimeError(
+            f"Sandbox interrompu (signal {sig}): {operation}"
         )
 
-    if proc.returncode != 0:
-        raise PermissionError(
-            f"Accès refusé par le sandbox: {operation}"
-        )
-
+    # Le worker n'a produit aucune sortie.
     if not stdout:
+        audit.warning(
+            "sandbox_no_stdout",
+            operation=operation,
+            detail=stderr_text,
+        )
         raise RuntimeError(
             "Sandbox worker returned no output. "
             f"stderr={stderr_text!r}"
         )
-    return stdout.decode()
+
+    # Le worker a éventuellement fourni une erreur structurée sur stderr.
+    try:
+        info = json.loads(stderr_text)
+        category = info.get("category", "infra_failure")
+        detail = info.get("detail", stderr_text)
+
+    except (json.JSONDecodeError, ValueError):
+        category = "infra_failure"
+        detail = stderr_text
+
+    audit.warning(
+        "sandbox_failure",
+        operation=operation,
+        category=category,
+        detail=detail,
+    )
+
+    if category == "landlock_denial":
+        audit.warning(
+            "landlock_denial",
+            operation=operation,
+            detail=detail,
+        )
+        raise PermissionError(
+            f"Accès refusé par le sandbox: {operation}"
+        )
+
+    raise RuntimeError(
+        f"Sandbox indisponible pour {operation}: {detail}"
+    )
 
 
-def _setup_cgroup(name: str, memory_max_mb: int = 256, pids_max: int = 32, cpu_percent: int = 50) -> Path :
-    """Crée un sous-cgroup dédié à une opération. Retourne son chemin, ou None
-    si la délégation n'est pas disponible — dégradation gracieuse, même principe
-    que seccomp sous WSL2 : on continue sans, on ne bloque pas l'opération. ==> fail-open"""
+def _setup_cgroup(
+    name: str,
+    memory_max_mb: int = 256,
+    pids_max: int = 32,
+    cpu_percent: int = 50,
+) -> Path | None:
+    """Crée un cgroup dédié à une opération.
+
+    Retourne None si les cgroups ne sont pas disponibles.
+    """
+
     try:
         cg_path = CGROUP_BASE / f"sandbox-{name}-{os.getpid()}"
         cg_path.mkdir(parents=True, exist_ok=True)
+
     except OSError as e:
-        logger.warning("cgroups indisponibles (%s) — limites de ressources non appliquées", e)
+        audit.warning(
+            "infra_failure",
+            component="cgroup",
+            operation=name,
+            detail=f"cgroups_unavailable: {e}",
+        )
         return None
 
-    for filename, value in [
-        ("memory.max", str(memory_max_mb * 1024 * 1024)),
-        ("pids.max", str(pids_max)),
-        ("cpu.max", f"{cpu_percent * 1000} 100000"),
-    ]:
-        (cg_path / filename).write_text(value)
+    try:
+        for filename, value in [
+            ("memory.max", str(memory_max_mb * 1024 * 1024)),
+            ("pids.max", str(pids_max)),
+            ("cpu.max", f"{cpu_percent * 1000} 100000"),
+        ]:
+            (cg_path / filename).write_text(value)
+
+    except OSError as e:
+        audit.warning(
+            "infra_failure",
+            component="cgroup",
+            operation=name,
+            detail=f"configuration_failed: {e}",
+        )
+        _cleanup_cgroup(cg_path)
+        return None
+
     return cg_path
 
 
 def _cleanup_cgroup(cg_path: Path | None) -> None:
     if cg_path is None:
         return
+
     try:
         cg_path.rmdir()
-    except OSError:
-        pass
+    except OSError as e:
+        audit.warning(
+            "infra_failure",
+            component="cgroup",
+            detail=f"cleanup_failed: {e}",
+        )

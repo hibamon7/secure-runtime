@@ -3,6 +3,7 @@ import pytest
 from app.runtime.main import Runtime
 from app.runtime.sandbox_manager.wiring import _run_sandboxed
 from app.auth.schemas import TokenPayload
+from app.runtime.rag_layer.classification import load_classification_registry
 
 
 @pytest.fixture

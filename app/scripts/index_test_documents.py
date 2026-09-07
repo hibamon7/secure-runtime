@@ -27,7 +27,7 @@ for i, doc in enumerate(docs):
 
 index_documents(all_chunks, ids=all_ids, sources=all_sources, signatures=all_signatures)
 
-registry_path = Path("policies/rag_classification.json")
+registry_path = Path("app/runtime/policy_engine/rag_classification.json")
 registry_path.write_text(json.dumps({"version": "1.0.0", "classified_documents": classification_registry}, indent=2))
 
 print(f"{len(all_chunks)} chunks indexés, {len(classification_registry)} classifiés confidentiels.")

@@ -46,6 +46,6 @@
     {
       "id": "r-rag-confidential", "resource": "rag_document", "action": "use",
       "effect": "allow", "conditions": {"role": ["admin"]}, "classification": "confidential"
-    },
+    }
   ]
 }

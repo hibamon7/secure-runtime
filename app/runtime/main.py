@@ -15,7 +15,10 @@ from app.runtime.rag_layer.main import search as rag_search
 from app.runtime.rag_layer.provenance import IntegrityVerifier
 from app.runtime.rag_layer.config import load_rag_integrity_config
 from app.runtime.rag_layer.main import search as rag_search, spotlight
-from app.runtime.rag_layer.classification import get_classification
+from app.runtime.rag_layer.classification import load_classification_registry, get_classification
+from app.runtime.audit_manager.main import get_audit_logger
+from app.runtime.output_guardrails.main import redact_pii, grounding_score, GROUNDING_THRESHOLD
+
 
 RAG_SYSTEM_INSTRUCTION = (
     "Tu recevras des extraits de documents internes, entre balises <document>, "
@@ -45,31 +48,31 @@ class Runtime:
 
     def __init__(self, policy_rules_path: str = "app/runtime/policy_engine/rules.json"):
         self.policy_engine = PolicyEngine(policy_rules_path)
-        self.audit = None
         self.integrity_verifier = IntegrityVerifier(load_rag_integrity_config())
+        self.rag_classification = load_classification_registry()
+        self.audit = get_audit_logger("runtime")
 
 
-    async def _authorize(self, current_user: TokenPayload, resource: dict, action: str) -> AuthorizationReceipt:
+    async def _authorize(self, current_user, resource, action):
         decision = self.policy_engine.evaluate(_to_subject(current_user), resource, action)
-        logger.info(
-            "policy_decision: version=%s sub=%s resource=%s action=%s allowed=%s rule=%s",
-            self.policy_engine.version, current_user.sub, resource.get("type"),
-            action, decision.allowed, decision.matched_rule_id,
-        )
+        self.audit.info("policy_decision", policy_version=self.policy_engine.version, sub=current_user.sub,
+                resource=resource.get("type"), action=action, allowed=decision.allowed, rule=decision.matched_rule_id)
         if not decision.allowed:
+            self.audit.warning("policy_denial", resource=resource.get("type"), action=action, reason=decision.reason)
             raise PermissionError(decision.reason)
-        return AuthorizationReceipt(
-            resource_type=resource.get("type"), action=action,
-            identifier=_identifier_from_resource(resource),
-        )   
-        
+        return AuthorizationReceipt(resource_type=resource.get("type"), action=action, identifier=_identifier_from_resource(resource)) 
+
+
     async def ask(self, prompt: str, current_user: TokenPayload, system: str | None = None) -> str:
         check_prompt(prompt)
         await self._authorize(current_user, resource={"type": "llm"}, action="ask")
-        return await self._call_llm(prompt,system=system)
+        response = await self._call_llm(prompt, system=system)
+        return self._apply_output_guardrails(response)
+
 
     async def _call_llm(self, prompt: str, system: str| None=None) -> str:
         return await ask_llm(prompt, system=system)
+
 
     async def read_file(self, path: str, current_user: TokenPayload | None = None) -> str:
         resolved = str(Path(path).resolve())
@@ -89,6 +92,7 @@ class Runtime:
         await _run_sandboxed(receipt, "file_write", identifier=resolved, worker_kwargs={"path": resolved, "content": content})
     #Policy Engine vérifié avant Landlock — le check le moins cher (comparaison de strings en mémoire) élimine les cas évidents avant de payer le coût d'un fork/exec
 
+
     async def _http_request(self, method: str, url: str, **kwargs) -> dict:
         import httpx
         # follow_redirects reste False (défaut httpx) : une redirection ne contourne pas l'allowlist
@@ -97,6 +101,7 @@ class Runtime:
             resp.raise_for_status() #this line checks if the HTTP response status code indicates an error (4xx or 5xx). If it does, it raises an exception, which can be caught and handled by the caller. This is important for ensuring that the application can gracefully handle failed HTTP requests and provide appropriate feedback or error messages to the user.
             return resp.json()
     
+
     async def call_api(self, url: str, current_user: TokenPayload, method: str = "GET", **kwargs) -> dict:
         parsed = urlparse(url)
         domain = parsed.hostname
@@ -105,12 +110,12 @@ class Runtime:
         await self._authorize(current_user, resource={"type": "api"}, action="call")
         net_resource = {"type": "network", "domain": domain, "port": port}
         receipt = await self._authorize(current_user, net_resource, "connect")
-
         result = await _run_sandboxed(
             receipt, "network_call", identifier=f"{domain}:{port}",
             worker_kwargs={"method": method, "url": url, "port": port, "body": kwargs.get("json")},
         )
         return json.loads(result)
+
 
     async def execute_tool(self, name: str, current_user: TokenPayload, **kwargs):
         resource = {"type": "tool", "tool_name": name}
@@ -125,9 +130,22 @@ class Runtime:
         )
         return json.loads(result)
 
+
+    def _apply_output_guardrails(self, response: str, context_chunks: list[str] | None = None) -> str:
+        redacted, findings = redact_pii(response)
+        if findings:
+            self.audit.warning("output_pii_redacted", count=len(findings), types=[f["type"] for f in findings])
+        if context_chunks is not None:
+            score = grounding_score(redacted, context_chunks)
+            if score < GROUNDING_THRESHOLD:
+                self.audit.warning("output_grounding_low", score=round(score, 3), threshold=GROUNDING_THRESHOLD)
+        return redacted
+
+
     async def query_rag(self, query: str, current_user: TokenPayload, n_results: int = 3) -> list[dict]:
         await self._authorize(current_user, resource={"type": "rag"}, action="query")
         return rag_search(query, n_results=n_results)
+
 
     async def ask_with_context(self, prompt: str, current_user: TokenPayload) -> str:
         check_prompt(prompt)
@@ -165,5 +183,5 @@ class Runtime:
         context_block = "\n\n".join(f"<document>{spotlight(t)}</document>" for t in safe_texts)
         augmented_prompt = f"<document_context>\n{context_block}\n</document_context>\n\nQuestion: {prompt}"
 
-        await self._authorize(current_user, resource={"type": "llm"}, action="ask")
-        return await self._call_llm(augmented_prompt, system=RAG_SYSTEM_INSTRUCTION)
+        response = await self._call_llm(augmented_prompt, system=RAG_SYSTEM_INSTRUCTION)
+        return self._apply_output_guardrails(response, context_chunks=safe_texts)

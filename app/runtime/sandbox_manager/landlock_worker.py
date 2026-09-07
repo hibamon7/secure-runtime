@@ -8,27 +8,21 @@ import importlib.util
 import ast       # pré-chargé pour les outils qui en ont besoin (calculator)
 import operator  # idem
 from pathlib import Path
-import certifi  # à ajouter en haut de landlock_worker.py, avec les autres imports
-
+import certifi #cette biblio cntient les certifs, c est a dire les clés publiques des autorités de certification, pour vérifier l'identité des serveurs lors des connexions HTTPS
 from py_landlock import AccessFs
-
 from py_landlock import Landlock
 import pyseccomp as seccomp
-import sysconfig 
 import httpx
 import encodings.idna
 _ = httpx.Client()
 
 
 
-STDLIB_DIR = sysconfig.get_path("stdlib") #demande à l'installation Python actuelle où se trouve sa standard library sur le disque. 
-
-
 
 def _apply_seccomp(dangerous_syscalls: list[str]) -> None:
-    f = seccomp.SyscallFilter(defaction=seccomp.ALLOW)
     try:
-        for name in DANGEROUS_SYSCALLS:
+        f = seccomp.SyscallFilter(defaction=seccomp.ALLOW)
+        for name in dangerous_syscalls:
             f.add_rule(seccomp.KILL, name)
         f.load()
     except PermissionError as e:
@@ -59,7 +53,7 @@ def _handle_tool_exec(script_path: str, kwargs: dict,dangerous_syscalls: list[st
     spec.loader.exec_module(module) #this line executes the code of the tool
     return json.dumps(module.run(**kwargs)) #this line returns the result of the run as a json object
 
-def _handle_network_call(method: str, url: str, port: int, dangerous_syscalls: list[str], body: dict | None) -> str:
+def _handle_network_call(method: str, url: str, port: int, body: dict | None, dangerous_syscalls: list[str]) -> str:    
     _apply_seccomp(dangerous_syscalls)
     (Landlock()
         .add_path_rule(certifi.where(), access=AccessFs.READ_FILE)
@@ -84,20 +78,27 @@ def _handle_network_call(method: str, url: str, port: int, dangerous_syscalls: l
 
 
 def main() -> None:
-    request = json.loads(sys.argv[1])
-    dangerous_syscalls = request["dangerous_syscalls"]
-    op = request["operation"]
-    if op == "file_read":
-        result = _handle_file_read(request["path"], dangerous_syscalls)
-    elif op == "file_write":
-        result = _handle_file_write(request["path"], request["content"], dangerous_syscalls)
-    elif op == "tool_exec":
-        result = _handle_tool_exec(request["script_path"], request.get("kwargs", {}), dangerous_syscalls)
-    elif op == "network_call":
-        result = _handle_network_call(request["method"], request["url"], request["port"], dangerous_syscalls, request.get("body"))
-    else:
-        raise ValueError(f"Opération inconnue: {op}")
-    sys.stdout.write(result)
+    try:
+        request = json.loads(sys.argv[1])
+        dangerous_syscalls = request["dangerous_syscalls"]
+        op = request["operation"]
+        if op == "file_read":
+            result = _handle_file_read(request["path"], dangerous_syscalls)
+        elif op == "file_write":
+            result = _handle_file_write(request["path"], request["content"], dangerous_syscalls)
+        elif op == "tool_exec":
+            result = _handle_tool_exec(request["script_path"], request.get("kwargs", {}), dangerous_syscalls)
+        elif op == "network_call":
+            result = _handle_network_call(request["method"], request["url"], request["port"], request.get("body"), dangerous_syscalls)
+        else:
+            raise ValueError(f"Opération inconnue: {op}")
+        sys.stdout.write(result)
+    except PermissionError as e:
+        print(json.dumps({"category": "landlock_denial", "detail": str(e)}), file=sys.stderr)
+        sys.exit(2)
+    except Exception as e:
+        print(json.dumps({"category": "infra_failure", "detail": f"{type(e).__name__}: {e}"}), file=sys.stderr)
+        sys.exit(3)
 
 
 if __name__ == "__main__":
