@@ -4,6 +4,8 @@ from app.runtime.main import Runtime
 from app.runtime.sandbox_manager.wiring import _run_sandboxed
 from app.auth.schemas import TokenPayload
 from app.runtime.rag_layer.classification import load_classification_registry
+from app.runtime.audit_manager.main import configure_audit_logging
+configure_audit_logging()
 
 
 @pytest.fixture
@@ -23,7 +25,9 @@ def test_rules_file(tmp_path):
             {"id": "r-llm", "resource": "llm", "action": "ask", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-rag", "resource": "rag", "action": "query", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-rag-confidential", "resource": "rag_document", "action": "use",
-            "effect": "allow", "conditions": {"role": ["admin"]}, "classification": "confidential"},        
+            "effect": "allow", "conditions": {"role": ["admin"]}, "classification": "confidential"},
+            {"id": "r-net", "resource": "network", "action": "connect", "domain": "api.open-meteo.com",
+            "port": 443, "effect": "allow", "conditions": {}}  
         ],
     }
     f = tmp_path / "rules.json"

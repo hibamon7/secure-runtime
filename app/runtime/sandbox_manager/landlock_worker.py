@@ -9,12 +9,15 @@ import ast       # pré-chargé pour les outils qui en ont besoin (calculator)
 import operator  # idem
 from pathlib import Path
 import certifi #cette biblio cntient les certifs, c est a dire les clés publiques des autorités de certification, pour vérifier l'identité des serveurs lors des connexions HTTPS
-from py_landlock import AccessFs
-from py_landlock import Landlock
 import pyseccomp as seccomp
 import httpx
 import encodings.idna
 _ = httpx.Client()
+
+# Force l'initialisation de py_landlock (chargement de libc via ctypes.util.find_library,
+# qui lance un sous-processus — impossible une fois execve bloqué par seccomp).
+from py_landlock import AccessFs, Landlock, get_abi_version
+_ = get_abi_version()
 
 
 
@@ -33,48 +36,43 @@ def _apply_seccomp(dangerous_syscalls: list[str]) -> None:
         print(f"seccomp indisponible ({e}) — Landlock reste actif.", file=sys.stderr)
 
 
-def _handle_file_read(path: str,dangerous_syscalls: list[str]) -> str:
-    _apply_seccomp(dangerous_syscalls)
+def _handle_file_read(path: str, dangerous_syscalls: list[str]) -> str:
     Landlock().allow_read(str(Path(path).parent)).apply()
+    _apply_seccomp(dangerous_syscalls)
     return Path(path).read_text()
 
-def _handle_file_write(path: str, content: str,dangerous_syscalls: list[str]) -> str:
-    _apply_seccomp(dangerous_syscalls)
+
+def _handle_file_write(path: str, content: str, dangerous_syscalls: list[str]) -> str:
     Landlock().allow_read_write(str(Path(path).parent)).apply()
+    _apply_seccomp(dangerous_syscalls)
     Path(path).write_text(content)
     return ""
 
-def _handle_tool_exec(script_path: str, kwargs: dict,dangerous_syscalls: list[str]) -> str:
-    resolved_script = str(Path(script_path).resolve())
-    _apply_seccomp(dangerous_syscalls)
-    Landlock().add_path_rule(resolved_script, access=AccessFs.READ_FILE).apply()
-    spec = importlib.util.spec_from_file_location("tool_module", resolved_script) #this is to load the code of the tool
-    module = importlib.util.module_from_spec(spec) #the module is a representation of the code in memory, it is not executed yet
-    spec.loader.exec_module(module) #this line executes the code of the tool
-    return json.dumps(module.run(**kwargs)) #this line returns the result of the run as a json object
 
-def _handle_network_call(method: str, url: str, port: int, body: dict | None, dangerous_syscalls: list[str]) -> str:    
+def _handle_tool_exec(script_path: str, kwargs: dict, dangerous_syscalls: list[str]) -> str:
+    resolved_script = str(Path(script_path).resolve())
+    Landlock().add_path_rule(resolved_script, access=AccessFs.READ_FILE).apply()
     _apply_seccomp(dangerous_syscalls)
+    spec = importlib.util.spec_from_file_location("tool_module", resolved_script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return json.dumps(module.run(**kwargs))
+
+
+def _handle_network_call(method: str, url: str, port: int, body: dict | None, dangerous_syscalls: list[str]) -> str:
     (Landlock()
         .add_path_rule(certifi.where(), access=AccessFs.READ_FILE)
         .add_path_rule("/etc/resolv.conf", access=AccessFs.READ_FILE)
         .add_path_rule("/etc/hosts", access=AccessFs.READ_FILE)
         .add_path_rule("/etc/nsswitch.conf", access=AccessFs.READ_FILE)
-        .allow_network(port, bind=False, connect=True) #bind means the process only listens to the port
+        .allow_network(port, bind=False, connect=True)
         .apply()
     )
+    _apply_seccomp(dangerous_syscalls)
     resp = httpx.request(method, url, json=body, timeout=5.0)
-
-    print(
-        f"HTTP status={resp.status_code}, "
-        f"content_length={len(resp.content)}",
-        file=sys.stderr,
-    )
-
-
     resp.raise_for_status()
-
     return resp.text
+
 
 
 def main() -> None:

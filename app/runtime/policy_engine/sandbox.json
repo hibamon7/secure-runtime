@@ -1,11 +1,10 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "dangerous_syscalls": [
-    "execve", "execveat", "fork", "vfork", "clone", "clone3", "ptrace",
+    "execve", "execveat", "ptrace",
     "mount", "umount2", "reboot", "kexec_load", "init_module", "delete_module",
     "setuid", "setgid", "setreuid", "setregid"
   ],
   "cgroup_defaults": {"memory_max_mb": 256, "pids_max": 32, "cpu_percent": 50},
   "subprocess_timeout_seconds": 10
 }
-

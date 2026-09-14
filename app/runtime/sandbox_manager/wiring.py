@@ -13,7 +13,12 @@ audit = get_audit_logger("sandbox_manager")
 
 _SANDBOX_CONFIG = load_sandbox_config()
 
-CGROUP_BASE = Path(f"/sys/fs/cgroup/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service")
+def _current_cgroup_path() -> Path:
+    line = Path("/proc/self/cgroup").read_text().strip()
+    rel_path = line.split(":")[-1].lstrip("/")
+    return Path("/sys/fs/cgroup") / rel_path
+
+CGROUP_BASE = _current_cgroup_path()
 #for me for ex: /sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/ , this is the path to the cgroup of the current user, where we can find the cgroup of the current process and its children
 
 
@@ -87,12 +92,11 @@ async def _run_sandboxed(receipt: AuthorizationReceipt,operation: str,identifier
         try:
             (cg_path / "cgroup.procs").write_text(str(proc.pid))
         except OSError as e:
-            audit.warning(
-                "infra_failure",
-                operation=operation,
-                component="cgroup",
-                detail=f"attach_failed: {e}",
-            )
+            proc.kill()
+            await proc.communicate()
+            _cleanup_cgroup(cg_path)
+            audit.warning("infra_failure", operation=operation, component="cgroup", detail=f"attach_failed: {e}")
+            raise RuntimeError("Sandbox indisponible : impossible d'appliquer les limites cgroup")
 
     try:
         try:
@@ -178,18 +182,6 @@ async def _run_sandboxed(receipt: AuthorizationReceipt,operation: str,identifier
             f"Sandbox interrompu (signal {sig}): {operation}"
         )
 
-    # Le worker n'a produit aucune sortie.
-    if not stdout:
-        audit.warning(
-            "sandbox_no_stdout",
-            operation=operation,
-            detail=stderr_text,
-        )
-        raise RuntimeError(
-            "Sandbox worker returned no output. "
-            f"stderr={stderr_text!r}"
-        )
-
     # Le worker a éventuellement fourni une erreur structurée sur stderr.
     try:
         info = json.loads(stderr_text)
@@ -222,17 +214,11 @@ async def _run_sandboxed(receipt: AuthorizationReceipt,operation: str,identifier
     )
 
 
-def _setup_cgroup(
-    name: str,
-    memory_max_mb: int = 256,
-    pids_max: int = 32,
-    cpu_percent: int = 50,
-) -> Path | None:
-    """Crée un cgroup dédié à une opération.
-
-    Retourne None si les cgroups ne sont pas disponibles.
-    """
-
+def _setup_cgroup(name: str,memory_max_mb: int = 256,pids_max: int = 32,cpu_percent: int = 50,) -> Path | None:
+"""Crée un cgroup dédié à une opération.
+Lève PermissionError si les limites cgroup ne peuvent pas
+être configurées, afin de garantir un comportement fail-closed.
+"""
     try:
         cg_path = CGROUP_BASE / f"sandbox-{name}-{os.getpid()}"
         cg_path.mkdir(parents=True, exist_ok=True)
@@ -244,7 +230,9 @@ def _setup_cgroup(
             operation=name,
             detail=f"cgroups_unavailable: {e}",
         )
-        return None
+        raise PermissionError(
+            "Sandbox indisponible : cgroups non disponibles"
+        ) from e
 
     try:
         for filename, value in [
@@ -262,7 +250,10 @@ def _setup_cgroup(
             detail=f"configuration_failed: {e}",
         )
         _cleanup_cgroup(cg_path)
-        return None
+
+        raise PermissionError(
+            f"Sandbox indisponible : impossible de configurer les limites cgroup"
+        ) from e
 
     return cg_path
 
