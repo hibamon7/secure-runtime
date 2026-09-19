@@ -1,0 +1,27 @@
+services:
+  api:
+    build: .
+    cgroup: private
+    ports:
+      - "8000:8000"
+    environment:
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+    volumes:
+      - chroma_data:/secure-runtime/data/rag_index
+      - ./logs:/secure-runtime/logs
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    #security_opt:
+    #  - seccomp=./docker/seccomp-profile.json
+    cgroup_parent: docker-runtime.slice
+    depends_on:
+      - chromadb
+
+  chromadb:
+    image: chromadb/chroma:latest
+    volumes:
+      - chroma_data:/chroma/chroma
+    ports:
+      - "8001:8000"
+
+volumes:
+  chroma_data:

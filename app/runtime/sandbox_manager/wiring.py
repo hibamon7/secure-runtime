@@ -13,14 +13,19 @@ audit = get_audit_logger("sandbox_manager")
 
 _SANDBOX_CONFIG = load_sandbox_config()
 
-def _current_cgroup_path() -> Path:
+
+def _resolve_cgroup_base() -> Path:
+    #cette foncion va servir a determiner le chemin vers le cgroup creee par le docker entrypoint pour realiser les operations sandboxees
+    """Priorité à SANDBOX_CGROUP_BASE, préparé par l'entrypoint Docker.
+    Sans lui (dev local hors conteneur), retombe sur l'auto-découverte
+    déjà utilisée avec systemd-run --user --scope."""
+    if "SANDBOX_CGROUP_BASE" in os.environ:
+        return Path(os.environ["SANDBOX_CGROUP_BASE"])
     line = Path("/proc/self/cgroup").read_text().strip()
     rel_path = line.split(":")[-1].lstrip("/")
     return Path("/sys/fs/cgroup") / rel_path
 
-CGROUP_BASE = _current_cgroup_path()
-#for me for ex: /sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/ , this is the path to the cgroup of the current user, where we can find the cgroup of the current process and its children
-
+CGROUP_BASE = _resolve_cgroup_base()
 
 from app.runtime.sandbox_manager.authorization_receipt import AuthorizationReceipt
 

@@ -1,5 +1,6 @@
 import chromadb
 import logging
+import os
 
 logger = logging.getLogger("rag_layer")
 
@@ -8,11 +9,14 @@ _client = None
 _collection = None
 
 
-def _get_collection():
+def _get_collection(): #sert à récupérer la collection ChromaDB que ton RAG va utiliser pour stocker/rechercher les documents.
     global _client, _collection
     if _collection is None:
-        _client = chromadb.PersistentClient(path="data/rag_index") #ceci sert a conserver l'index de recherche de documents de manière persistante sur le disque, dans le répertoire "data/rag_index". 
-        _collection = _client.get_or_create_collection("test_docs") #cette collection est pour stocker et interroger les documents
+        if os.environ.get("CHROMA_HTTP_HOST"):
+            _client = chromadb.HttpClient(host=os.environ["CHROMA_HTTP_HOST"], port=8000)
+        else:
+            _client = chromadb.PersistentClient(path="data/rag_index") #persistent client pour stocker les données de l'indexation RAG sur le disque, dans le dossier data/rag_index
+        _collection = _client.get_or_create_collection("test_docs")
     return _collection
 
 
