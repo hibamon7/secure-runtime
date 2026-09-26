@@ -220,10 +220,10 @@ async def _run_sandboxed(receipt: AuthorizationReceipt,operation: str,identifier
 
 
 def _setup_cgroup(name: str,memory_max_mb: int = 256,pids_max: int = 32,cpu_percent: int = 50,) -> Path | None:
-"""Crée un cgroup dédié à une opération.
-Lève PermissionError si les limites cgroup ne peuvent pas
-être configurées, afin de garantir un comportement fail-closed.
-"""
+    """Crée un cgroup dédié à une opération.
+    Lève PermissionError si les limites cgroup ne peuvent pas
+    être configurées, afin de garantir un comportement fail-closed.
+    """
     try:
         cg_path = CGROUP_BASE / f"sandbox-{name}-{os.getpid()}"
         cg_path.mkdir(parents=True, exist_ok=True)
