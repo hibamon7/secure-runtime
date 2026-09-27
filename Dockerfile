@@ -23,11 +23,14 @@ RUN TORCH_VERSION=$(grep -E "^torch==" requirements.txt | sed -E 's/^torch==//')
 RUN grep -vE "^(torch==|triton==|nvidia-|cuda-)" requirements.txt > /tmp/requirements-nogpu.txt \
     && pip install --no-cache-dir -r /tmp/requirements-nogpu.txt
 
-COPY . .
-
 # Utilisateur non privilégié — le process principal n'a jamais besoin de root
 RUN useradd --create-home --shell /bin/bash runtime_user
 
+COPY . .
+
+RUN mkdir -p /secure-runtime/logs \
+    && chown runtime_user:runtime_user /secure-runtime/logs
+    
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
