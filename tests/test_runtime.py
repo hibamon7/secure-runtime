@@ -4,9 +4,11 @@ from app.runtime.main import Runtime
 from app.auth.schemas import TokenPayload
 
 @pytest.mark.asyncio
-
-@pytest.mark.asyncio
-async def test_ask_passthrough(make_user):
+async def test_ask_passthrough(make_user, monkeypatch):
+    from app.runtime import main as runtime_main
+    async def fake_call_llm(self, prompt, system=None):
+        return "réponse factice"
+    monkeypatch.setattr(runtime_main.Runtime, "_call_llm", fake_call_llm)
     runtime = Runtime()
     result = await runtime.ask("ping", current_user=make_user())
     assert isinstance(result, str)
@@ -21,7 +23,7 @@ def make_user():
 @pytest.mark.asyncio
 async def test_ask_allowed_for_valid_role(make_user):
     runtime = Runtime()
-    result = await runtime.ask("hello", current_user=make_user(role="user"))
+    monkeypatch.setattr(runtime_main.Runtime, "_call_llm", fake_call_llm)
     assert isinstance(result, str)
 
 @pytest.mark.asyncio

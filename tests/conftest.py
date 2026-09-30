@@ -14,20 +14,16 @@ def test_rules_file(tmp_path):
         "version": "test",
         "rules": [
             {"id": "r-read", "resource": "file", "action": "read", "path_prefix": str(tmp_path),
-             "effect": "allow", "conditions": {"role": ["user", "admin"], "required_scopes": ["file:read"], "max_file_size_mb": 20}},
+            "effect": "allow", "conditions": {"role": ["user", "admin"], "required_scopes": ["file:read"], "max_file_size_mb": 20}},
             {"id": "r-write", "resource": "file", "action": "write", "path_prefix": str(tmp_path),
-             "effect": "allow", "conditions": {"role": ["user", "admin"], "required_scopes": ["file:write"]}},
+            "effect": "allow", "conditions": {"role": ["user", "admin"], "required_scopes": ["file:write"]}},
             {"id": "r-calc", "resource": "tool", "action": "execute", "tool_name": "calculator",
-             "effect": "allow", "conditions": {"role": ["user", "admin"]}},
+            "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-api", "resource": "api", "action": "call", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
-            {"id": "r-net", "resource": "network", "action": "connect", "domain": "api.open-meteo.com",
-             "effect": "allow", "conditions": {}},{"id": "r-rag", "resource": "rag", "action": "query", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-llm", "resource": "llm", "action": "ask", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-rag", "resource": "rag", "action": "query", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
-            {"id": "r-rag-confidential", "resource": "rag_document", "action": "use",
-            "effect": "allow", "conditions": {"role": ["admin"]}, "classification": "confidential"},
             {"id": "r-net", "resource": "network", "action": "connect", "domain": "api.open-meteo.com",
-            "port": 443, "effect": "allow", "conditions": {}}  
+            "port": 443, "effect": "allow", "conditions": {}},
         ],
     }
     f = tmp_path / "rules.json"

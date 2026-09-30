@@ -3,15 +3,13 @@ services:
     privileged: true
     build: .
     cgroup: private
-    cap_add:
-      - SYS_ADMIN
     ports:
       - "8000:8000"
     environment:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
     volumes:
-      - chroma_data:/secure-runtime/app/data/rag_index
-      - ./logs:/secure-runtime/logs
+      - chroma_data:/app/data/rag_index
+      - ./logs:/app/logs
     #security_opt:
     #  - seccomp=./docker/seccomp-profile.json
     depends_on:

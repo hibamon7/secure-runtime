@@ -12,12 +12,13 @@ def configure_audit_logging(log_dir: str = "logs", max_bytes: int = 10 * 1024 * 
         return
     _configured = True
 
-    LOG_DIR = Path("/secure-runtime/logs")
+    LOG_DIR = Path(log_dir)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     file_handler = RotatingFileHandler(
         LOG_DIR / "audit.jsonl", maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8",
     )
+
     file_handler.setFormatter(logging.Formatter("%(message)s"))  # structlog fournit déjà le JSON complet
 
     root = logging.getLogger()

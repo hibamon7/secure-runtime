@@ -51,8 +51,7 @@ async def test_policy_denial_logged_without_reaching_landlock(runtime, make_user
         with pytest.raises(PermissionError):
             await runtime.read_file("/etc/passwd", current_user=make_user(scopes=["file:read"]))
     messages = [r.message for r in caplog.records]
-    assert any("policy_decision" in m and "allowed=False" in m for m in messages)
-
+    assert any('"policy_decision"' in m and '"allowed": false' in m for m in messages)
 
 @pytest.mark.asyncio
 async def test_run_sandboxed_requires_a_receipt():

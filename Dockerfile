@@ -28,9 +28,9 @@ RUN useradd --create-home --shell /bin/bash runtime_user
 
 COPY . .
 
-RUN mkdir -p /secure-runtime/logs \
-    && chown runtime_user:runtime_user /secure-runtime/logs
-    
+RUN mkdir -p /app/logs /app/data/rag_index \
+    && chown -R runtime_user:runtime_user /app/logs /app/data  
+      
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
