@@ -1,4 +1,6 @@
 {
   "version": "1.0.0",
-  "classified_documents": {}
+  "classified_documents": {
+    "doc2_chunk0": "confidential"
+  }
 }

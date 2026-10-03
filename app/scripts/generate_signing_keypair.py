@@ -10,3 +10,5 @@ pub_b64 = base64.b64encode(public_key.public_bytes(Encoding.Raw, PublicFormat.Ra
 
 print("Clé PRIVÉE ( hors du repo) :", priv_b64)
 print("Clé PUBLIQUE (crag_layer.json) :", pub_b64)
+
+#run this command to use your private key: INDEXATION_PRIVATE_KEY='<type the key here>' PYTHONPATH=. python app/scripts/index_test_documents.py
