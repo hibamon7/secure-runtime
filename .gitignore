@@ -16,3 +16,6 @@ logs/
 
 # OS
 .DS_Store
+
+# Index RAG local (régénérable via app/scripts/index_test_documents.py)
+data/rag_index/

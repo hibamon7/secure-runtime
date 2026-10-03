@@ -1,9 +1,13 @@
 import json
+import os
+import sys
 from pathlib import Path
 from app.runtime.rag_layer.main import index_documents, chunk_text
 from app.runtime.rag_layer.provenance import IndexationSigner
 
-PRIVATE_KEY_B64 = "upfBEgrnc+4nKWk40nKb7RDxa4Do1Og3Zdm/qpuAA44="
+PRIVATE_KEY_B64 = os.environ.get("INDEXATION_PRIVATE_KEY")
+if not PRIVATE_KEY_B64:
+    sys.exit("INDEXATION_PRIVATE_KEY non défini : la clé privée d'indexation ne vit jamais dans le dépôt.")
 signer = IndexationSigner(PRIVATE_KEY_B64)
 
 docs = [

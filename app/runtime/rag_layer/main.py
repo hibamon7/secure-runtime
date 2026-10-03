@@ -1,12 +1,16 @@
 import chromadb
-import logging
 import os
-
-logger = logging.getLogger("rag_layer")
 
 
 _client = None
 _collection = None
+
+
+def _reset_for_tests() -> None:
+    """Oublie le client/la collection en cache (utilisé par les fixtures de test)."""
+    global _client, _collection
+    _client = None
+    _collection = None
 
 
 def _get_collection(): #sert à récupérer la collection ChromaDB que ton RAG va utiliser pour stocker/rechercher les documents.
@@ -15,14 +19,14 @@ def _get_collection(): #sert à récupérer la collection ChromaDB que ton RAG v
         if os.environ.get("CHROMA_HTTP_HOST"):
             _client = chromadb.HttpClient(host=os.environ["CHROMA_HTTP_HOST"], port=8000)
         else:
-            _client = chromadb.PersistentClient(path="data/rag_index") #persistent client pour stocker les données de l'indexation RAG sur le disque, dans le dossier data/rag_index
+            _client = chromadb.PersistentClient(path=os.environ.get("RAG_INDEX_PATH", "data/rag_index"))  # défaut : data/rag_index ; RAG_INDEX_PATH permet d'isoler les tests
         _collection = _client.get_or_create_collection("test_docs")
     return _collection
 
 
 def index_documents(documents: list[str], ids: list[str], sources: list[str], signatures: list[str]) -> None:
     metadatas = [{"source": s, "signature": sig} for s, sig in zip(sources, signatures)]
-    _get_collection().add(documents=documents, ids=ids, metadatas=metadatas)
+    _get_collection().upsert(documents=documents, ids=ids, metadatas=metadatas)
 
 
 def search(query: str, n_results: int = 3) -> list[dict]: #returns the 3 documents of chroma the nearerst to the sense of the question asked (kNN search)

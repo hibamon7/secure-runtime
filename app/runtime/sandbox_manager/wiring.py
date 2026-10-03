@@ -1,5 +1,6 @@
 import asyncio
 import json
+import uuid
 import sys
 import os
 from pathlib import Path
@@ -221,11 +222,11 @@ async def _run_sandboxed(receipt: AuthorizationReceipt,operation: str,identifier
 
 def _setup_cgroup(name: str,memory_max_mb: int = 256,pids_max: int = 32,cpu_percent: int = 50,) -> Path | None:
     """Crée un cgroup dédié à une opération.
-    Lève PermissionError si les limites cgroup ne peuvent pas
-    être configurées, afin de garantir un comportement fail-closed.
+    Lève RuntimeError (panne d'infrastructure, pas un refus de politique)
+    si les limites cgroup ne peuvent pas être configurées : fail-closed.
     """
     try:
-        cg_path = CGROUP_BASE / f"sandbox-{name}-{os.getpid()}"
+        cg_path = CGROUP_BASE / f"sandbox-{name}-{os.getpid()}-{uuid.uuid4().hex[:8]}"  # unique par appel : deux requêtes concurrentes ne partagent plus un cgroup
         cg_path.mkdir(parents=True, exist_ok=True)
 
     except OSError as e:
@@ -235,7 +236,7 @@ def _setup_cgroup(name: str,memory_max_mb: int = 256,pids_max: int = 32,cpu_perc
             operation=name,
             detail=f"cgroups_unavailable: {e}",
         )
-        raise PermissionError(
+        raise RuntimeError(
             "Sandbox indisponible : cgroups non disponibles"
         ) from e
 
@@ -256,8 +257,8 @@ def _setup_cgroup(name: str,memory_max_mb: int = 256,pids_max: int = 32,cpu_perc
         )
         _cleanup_cgroup(cg_path)
 
-        raise PermissionError(
-            f"Sandbox indisponible : impossible de configurer les limites cgroup"
+        raise RuntimeError(
+            "Sandbox indisponible : impossible de configurer les limites cgroup"
         ) from e
 
     return cg_path

@@ -75,8 +75,11 @@ class PolicyEngine:
             if key in RESERVED_KEYS:
                 continue
             if key == "path_prefix":
-                actual = str(Path(resource.get("path", "")).resolve()) #to get the exact path with no ../../
-                if not actual.startswith(expected):
+                # Comparaison par composantes de chemin (pas par chaîne) : "/data/user_uploads/"
+                # et "/data/user_uploads" sont équivalents, et "/data/user_uploads_evil/x" ne
+                # correspond plus au préfixe "/data/user_uploads".
+                actual = Path(resource.get("path", "")).resolve()  # résout ../ et liens symboliques
+                if not actual.is_relative_to(Path(expected).resolve()):
                     return False
             elif resource.get(key) != expected:
                 return False

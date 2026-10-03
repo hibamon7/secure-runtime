@@ -8,6 +8,17 @@ from app.runtime.audit_manager.main import configure_audit_logging
 configure_audit_logging()
 
 
+@pytest.fixture(autouse=True)
+def isolated_rag_index(tmp_path, monkeypatch):
+    """Chaque test travaille sur un index Chroma jetable : l'index réel
+    (data/rag_index) n'est jamais pollué par des documents de test non signés."""
+    from app.runtime.rag_layer import main as rag_main
+    monkeypatch.setenv("RAG_INDEX_PATH", str(tmp_path / "rag_index"))
+    rag_main._reset_for_tests()
+    yield
+    rag_main._reset_for_tests()
+
+
 @pytest.fixture
 def test_rules_file(tmp_path):
     rules = {
