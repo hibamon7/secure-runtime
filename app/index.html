@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title> Demo console </title>
+<style>
+  :root {
+    --bg: #f2ebdc;
+    --panel: #e9e2d2;
+    --ink: #27231c;
+    --green: #2f4a3c;
+    --sage: #8fa888;
+    --muted: #6b6355;
+    --danger: #9a3b3b;
+    --ok: #2f6b45;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.5;
+  }
+  header {
+    background: var(--green); color: #fff; padding: 1rem 1.5rem;
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem;
+  }
+  header h1 { margin: 0; font-size: 1.15rem; font-weight: 600; }
+  #whoami { font-size: .85rem; color: var(--sage); }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding: 1rem 1.5rem; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border-radius: 10px; padding: 1rem 1.15rem; margin-bottom: 1rem;
+  }
+  .card h2 { margin: 0 0 .75rem; font-size: .95rem; text-transform: uppercase; letter-spacing: .04em; color: var(--green); }
+  label { display: block; font-size: .8rem; color: var(--muted); margin: .5rem 0 .2rem; }
+  input, textarea, select {
+    width: 100%; padding: .5rem .6rem; border: 1px solid #d4cab4; border-radius: 6px;
+    font-family: inherit; font-size: .9rem; background: #fff; color: var(--ink);
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  button {
+    background: var(--green); color: #fff; border: 0; border-radius: 6px;
+    padding: .5rem .9rem; font-size: .88rem; cursor: pointer; margin-top: .6rem;
+  }
+  button:hover { background: #3e5c4c; }
+  button.secondary { background: var(--sage); color: var(--green); }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 120px; }
+  pre.result {
+    background: #fff; border-radius: 6px; padding: .6rem .7rem; font-size: .82rem;
+    white-space: pre-wrap; word-break: break-word; margin: .6rem 0 0; max-height: 220px; overflow: auto;
+    border-left: 3px solid var(--sage);
+  }
+  pre.result.err { border-left-color: var(--danger); color: var(--danger); }
+  pre.result.ok { border-left-color: var(--ok); }
+  #auditPanel { max-height: 520px; overflow: auto; }
+  .entry {
+    background: #fff; border-radius: 6px; padding: .5rem .65rem; margin-bottom: .45rem;
+    font-size: .78rem; border-left: 3px solid var(--sage);
+  }
+  .entry .ev { font-weight: 600; }
+  .entry .meta { color: var(--muted); font-size: .72rem; margin-top: .2rem; word-break: break-word; }
+  .entry.deny { border-left-color: var(--danger); }
+  .entry.deny .ev { color: var(--danger); }
+  .entry.infra { border-left-color: #b07d2a; }
+  .entry.infra .ev { color: #b07d2a; }
+  .hint { font-size: .76rem; color: var(--muted); margin: .35rem 0 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1> Demo console</h1>
+  <span id="whoami">non authentifié</span>
+</header>
+
+<main>
+  <div>
+    <div class="card">
+      <h2>1 · Authentification</h2>
+      <div class="row">
+        <div><label>Utilisateur</label><input id="username" value="alice"></div>
+        <div><label>Mot de passe</label><input id="password" type="password" value="alice_pwd"></div>
+      </div>
+      <button onclick="login()">Se connecter</button>
+      <p class="hint">alice = admin · bob = user (permissions réduites)</p>
+      <pre class="result" id="authResult"></pre>
+    </div>
+
+    <div class="card">
+      <h2>2 · Modèle de langage</h2>
+      <label>Prompt</label>
+      <textarea id="prompt">Explique le principe du fail-closed en une phrase.</textarea>
+      <div class="row">
+        <button onclick="call('/ask', {prompt: v('prompt')}, 'askResult')">runtime.ask()</button>
+        <button class="secondary" onclick="call('/ask-with-context', {prompt: v('prompt')}, 'askResult')">ask_with_context() · RAG</button>
+      </div>
+      <p class="hint">Essayez « ignore all previous instructions » pour déclencher les guardrails.</p>
+      <pre class="result" id="askResult"></pre>
+    </div>
+
+    <div class="card">
+      <h2>3 · Fichiers · Landlock</h2>
+      <label>Chemin</label>
+      <input id="filePath" value="/tmp/demo.txt">
+      <label>Contenu (écriture)</label>
+      <input id="fileContent" value="contenu de test">
+      <div class="row">
+        <button onclick="call('/write-file', {path: v('filePath'), content: v('fileContent')}, 'fileResult')">write_file()</button>
+        <button onclick="call('/read-file', {path: v('filePath')}, 'fileResult')">read_file()</button>
+      </div>
+      <p class="hint">Essayez /etc/passwd pour déclencher un refus du Policy Engine.</p>
+      <pre class="result" id="fileResult"></pre>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>4 · Outils · Sandbox</h2>
+      <div class="row">
+        <div><label>Outil</label>
+          <select id="toolName">
+            <option value="calculator">calculator</option>
+            <option value="shell_exec">shell_exec (refusé)</option>
+          </select>
+        </div>
+        <div><label>Expression</label><input id="toolExpr" value="2 + 3 * 4"></div>
+      </div>
+      <button onclick="call('/execute-tool', {name: v('toolName'), expression: v('toolExpr')}, 'toolResult')">execute_tool()</button>
+      <pre class="result" id="toolResult"></pre>
+    </div>
+
+    <div class="card">
+      <h2>5 · Réseau · Network Manager</h2>
+      <label>URL</label>
+      <input id="apiUrl" value="https://api.open-meteo.com/v1/forecast?latitude=34&longitude=-6&current=temperature_2m">
+      <button onclick="call('/call-api', {url: v('apiUrl'), method: 'GET'}, 'apiResult')">call_api()</button>
+      <p class="hint">Essayez un autre domaine pour déclencher le deny-by-default.</p>
+      <pre class="result" id="apiResult"></pre>
+    </div>
+
+    <div class="card">
+      <h2>6 · Journal d'audit <button class="secondary" style="float:right;margin:0" onclick="loadAudit()">Rafraîchir</button></h2>
+      <p class="hint">Réservé au rôle admin. Rafraîchi automatiquement après chaque action.</p>
+      <div id="auditPanel"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+let TOKEN = null;
+
+const v = id => document.getElementById(id).value;
+const show = (id, text, cls) => {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'result ' + (cls || '');
+};
+
+async function login() {
+  const body = new URLSearchParams({username: v('username'), password: v('password')});
+  try {
+    const res = await fetch('/auth/login', {method: 'POST', body});
+    const data = await res.json();
+    if (!res.ok) { show('authResult', JSON.stringify(data, null, 2), 'err'); return; }
+    TOKEN = data.access_token;
+    const payload = JSON.parse(atob(TOKEN.split('.')[1]));
+    document.getElementById('whoami').textContent =
+      `${payload.sub} · rôle: ${payload.role} · scopes: ${(payload.scopes || []).join(', ') || '—'}`;
+    show('authResult', 'Authentifié. Jeton d\'accès obtenu.', 'ok');
+    loadAudit();
+  } catch (e) {
+    show('authResult', String(e), 'err');
+  }
+}
+
+async function call(path, body, resultId) {
+  if (!TOKEN) { show(resultId, 'Authentifiez-vous d\'abord (section 1).', 'err'); return; }
+  show(resultId, '…');
+  try {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN},
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    const label = res.ok ? '' : `HTTP ${res.status} — `;
+    show(resultId, label + JSON.stringify(data, null, 2), res.ok ? 'ok' : 'err');
+  } catch (e) {
+    show(resultId, String(e), 'err');
+  }
+  loadAudit();
+}
+
+const DENY_EVENTS = ['policy_denial', 'landlock_denial', 'seccomp_violation',
+                      'cgroup_exceeded', 'identity_rejection',
+                      'rag_document_rejected_integrity', 'rag_document_excluded_content',
+                      'output_pii_redacted'];
+
+async function loadAudit() {
+  if (!TOKEN) return;
+  try {
+    const res = await fetch('/audit?limit=40', {headers: {'Authorization': 'Bearer ' + TOKEN}});
+    if (!res.ok) {
+      document.getElementById('auditPanel').innerHTML =
+        '<p class="hint">Journal non accessible (rôle admin requis).</p>';
+      return;
+    }
+    const data = await res.json();
+    const panel = document.getElementById('auditPanel');
+    if (!data.entries.length) { panel.innerHTML = '<p class="hint">Aucun événement.</p>'; return; }
+    panel.innerHTML = data.entries.map(e => {
+      const name = e.event || e.category || 'événement';
+      let cls = '';
+      if (DENY_EVENTS.includes(name)) cls = 'deny';
+      else if (name === 'infra_failure' || name === 'sandbox_failure') cls = 'infra';
+      const meta = Object.entries(e)
+        .filter(([k]) => !['event', 'timestamp', 'level'].includes(k))
+        .map(([k, val]) => `${k}=${typeof val === 'object' ? JSON.stringify(val) : val}`)
+        .join(' · ');
+      const ts = e.timestamp ? e.timestamp.replace('T', ' ').slice(0, 19) : '';
+      return `<div class="entry ${cls}">
+                <span class="ev">${name}</span> <span class="meta">${ts}</span>
+                <div class="meta">${meta}</div>
+              </div>`;
+    }).join('');
+  } catch (e) {
+    console.error(e);
+  }
+}
+</script>
+</body>
+</html>
