@@ -11,18 +11,8 @@ mkdir -p "$MAIN_CG" || {
     exit 1
 }
 
-echo "AFTER mkdir:"
-ls -ld "$APP_CG"
-ls -l "$APP_CG/cgroup.subtree_control"
 
-echo "DEBUG APP_CG=$APP_CG"
-echo "DEBUG MAIN_CG=$MAIN_CG"
-ls -la "$APP_CG"
-ls -la "$MAIN_CG"
-echo "DEBUG APP_CG exists: $(test -d "$APP_CG" && echo yes || echo no)"
-echo "DEBUG subtree exists: $(test -e "$APP_CG/cgroup.subtree_control" && echo yes || echo no)"
 
-ls -la /sys/fs/cgroup | head -50
 
 # Donne à runtime_user les droits nécessaires pour manipuler
 # les processus dans le cgroup, mais laisse la configuration
@@ -40,8 +30,6 @@ chown runtime_user:runtime_user \
 echo $$ > "$MAIN_CG/cgroup.procs"
 
 # Vérifie que le processus a bien été déplacé avant d'activer les contrôleurs.
-echo "DEBUG process cgroup after move:"
-cat /proc/self/cgroup
 
 # Les contrôleurs doivent d'abord être activés au niveau du parent
 # afin d'être disponibles pour runtime-app/.

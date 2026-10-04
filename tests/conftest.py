@@ -8,6 +8,18 @@ from app.runtime.audit_manager.main import configure_audit_logging
 configure_audit_logging()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def cgroup_tree():
+    """Natif : prépare l'arbre cgroup comme le fait l'application au démarrage
+    (lancer pytest sous `systemd-run --user --scope -p Delegate=yes`). Sous Docker : no-op.
+    Un échec n'est pas masqué : les tests qui exigent le sandbox échoueront avec la cause."""
+    from app.runtime.sandbox_manager.wiring import prepare_cgroup_tree
+    try:
+        prepare_cgroup_tree()
+    except RuntimeError as e:
+        print(f"\n[conftest] {e}")
+
+
 @pytest.fixture(autouse=True)
 def isolated_rag_index(tmp_path, monkeypatch):
     """Chaque test travaille sur un index Chroma jetable : l'index réel
@@ -33,6 +45,8 @@ def test_rules_file(tmp_path):
             {"id": "r-api", "resource": "api", "action": "call", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-llm", "resource": "llm", "action": "ask", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
             {"id": "r-rag", "resource": "rag", "action": "query", "effect": "allow", "conditions": {"role": ["user", "admin"]}},
+            {"id": "r-rag-confidential", "resource": "rag_document", "action": "use", "classification": "confidential",
+            "effect": "allow", "conditions": {"role": ["admin"]}},
             {"id": "r-net", "resource": "network", "action": "connect", "domain": "api.open-meteo.com",
             "port": 443, "effect": "allow", "conditions": {}},
         ],

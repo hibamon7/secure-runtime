@@ -15,18 +15,62 @@ audit = get_audit_logger("sandbox_manager")
 _SANDBOX_CONFIG = load_sandbox_config()
 
 
+_LEAF_NAME = "main"                      # feuille où vit le processus applicatif
+_CONTROLLERS = ("memory", "pids", "cpu")  # un par limite de sandbox.json -> cgroup_defaults
+
+
+def _current_cgroup() -> Path:
+    """Cgroup v2 du processus courant. Si le processus a déjà été déplacé dans
+    la feuille par prepare_cgroup_tree(), renvoie le cgroup parent."""
+    line = Path("/proc/self/cgroup").read_text().strip().splitlines()[-1]
+    path = Path("/sys/fs/cgroup") / line.split(":")[-1].lstrip("/")
+    return path.parent if path.name == _LEAF_NAME else path
+
+
 def _resolve_cgroup_base() -> Path:
-    #cette foncion va servir a determiner le chemin vers le cgroup creee par le docker entrypoint pour realiser les operations sandboxees
-    """Priorité à SANDBOX_CGROUP_BASE, préparé par l'entrypoint Docker.
-    Sans lui (dev local hors conteneur), retombe sur l'auto-découverte
-    déjà utilisée avec systemd-run --user --scope."""
+    """Cgroup sous lequel sont créés les cgroups jetables du sandbox.
+    Priorité à SANDBOX_CGROUP_BASE (préparé par l'entrypoint Docker) ;
+    sinon cgroup courant (natif : WSL / dual-boot / Linux)."""
     if "SANDBOX_CGROUP_BASE" in os.environ:
         return Path(os.environ["SANDBOX_CGROUP_BASE"])
-    line = Path("/proc/self/cgroup").read_text().strip()
-    rel_path = line.split(":")[-1].lstrip("/")
-    return Path("/sys/fs/cgroup") / rel_path
+    return _current_cgroup()
+
 
 CGROUP_BASE = _resolve_cgroup_base()
+
+
+def prepare_cgroup_tree(base: Path | None = None) -> Path | None:
+    """Prépare, au démarrage et en mode natif, la disposition « feuille + parent »
+    requise par la règle cgroup v2 « no internal process » : le processus
+    applicatif passe dans <base>/main, puis les contrôleurs sont activés sur
+    <base>, qui ne contient plus aucun processus et peut donc avoir des enfants
+    limités. C'est la même séquence que docker/entrypoint.sh.
+
+    Prérequis natif : lancer sous un scope délégué, c'est-à-dire
+        systemd-run --user --scope -p Delegate=yes -- uvicorn ...
+    Sans Delegate=yes, le contrôleur cpu n'est pas disponible (constaté sous WSL2).
+
+    Sous Docker (SANDBOX_CGROUP_BASE défini) l'entrypoint l'a déjà fait : no-op.
+    Lève RuntimeError, avec la cause, si la préparation est impossible."""
+    global CGROUP_BASE
+    if base is None:
+        if "SANDBOX_CGROUP_BASE" in os.environ:
+            return None
+        base = _current_cgroup()
+    leaf = base / _LEAF_NAME
+    try:
+        leaf.mkdir(exist_ok=True)
+        (leaf / "cgroup.procs").write_text(str(os.getpid()))
+        (base / "cgroup.subtree_control").write_text(" ".join(f"+{c}" for c in _CONTROLLERS))
+    except OSError as e:
+        audit.warning("infra_failure", component="cgroup", operation="startup", detail=f"prepare_tree_failed: {e}")
+        raise RuntimeError(
+            f"Préparation du cgroup impossible ({e}). Lancer l'application avec : "
+            f"systemd-run --user --scope -p Delegate=yes -- uvicorn app.main:app ..."
+        ) from e
+    CGROUP_BASE = base
+    audit.info("cgroup_tree_prepared", base=str(base), leaf=_LEAF_NAME)
+    return base
 
 from app.runtime.sandbox_manager.authorization_receipt import AuthorizationReceipt
 

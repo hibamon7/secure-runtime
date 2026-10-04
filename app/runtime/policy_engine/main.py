@@ -98,6 +98,7 @@ class PolicyEngine:
             if not set(conditions["required_scopes"]).issubset(set(subject.get("scopes", []))):
                 return False
         if "max_file_size_mb" in conditions:
-            if subject.get("file_size_mb", 0) > conditions["max_file_size_mb"]:
+            # La taille est un attribut de la ressource (le fichier), pas du sujet (l'utilisateur).
+            if resource.get("file_size_mb", 0) > conditions["max_file_size_mb"]:
                 return False
         return True

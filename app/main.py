@@ -9,12 +9,26 @@ from app.runtime.audit_manager.main import configure_audit_logging
 from py_landlock import Landlock
 from fastapi.responses import FileResponse
 from app.api import audit as audit_router
+from contextlib import asynccontextmanager
+from app.runtime.sandbox_manager.wiring import prepare_cgroup_tree
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
 configure_audit_logging()
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Mode natif : prépare l'arbre cgroup du sandbox. Un échec ne bloque pas le
+    # démarrage (ask() n'en dépend pas) : il est journalisé, et chaque opération
+    # sandboxée échouera ensuite en fail-closed (HTTP 500).
+    try:
+        prepare_cgroup_tree()
+    except RuntimeError as e:
+        logging.getLogger("uvicorn.error").error("SANDBOX INDISPONIBLE: %s", e)
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 app.include_router(router)

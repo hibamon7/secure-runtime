@@ -147,6 +147,8 @@ class Runtime:
 
     async def ask_with_context(self, prompt: str, current_user: TokenPayload) -> str:
         check_prompt(prompt)
+        # Même médiation que ask() : l'appel au modèle est une ressource à part entière.
+        await self._authorize(current_user, resource={"type": "llm"}, action="ask")
         retrieved = await self.query_rag(prompt, current_user)
 
         intact = []
