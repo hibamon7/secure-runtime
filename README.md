@@ -240,5 +240,4 @@ Dockerfile, docker-compose.yml
 - Les tests de charge, les tests d'intrusion manuels et la mesure de l'effort d'intégration n'ont pas été réalisés.
 
 ## Licence
-
-À définir : le fichier `License` du dépôt est actuellement vide.
+If you use this project, please give credit to the original author: me :) HIBA MONTASIR
